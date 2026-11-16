@@ -45,17 +45,6 @@ window.runQuestCompleter = function(targetGuildId, inviteCode) {
         );
     }
 
-    let isVerified = false;
-    try {
-        if (api) {
-            api.get({ url: '/users/@me/guilds' }).then(guildsRes => {
-                if (guildsRes?.body?.some(g => g.id === targetGuildId)) {
-                    isVerified = true;
-                }
-            });
-        }
-    } catch (e) {}
-
     let isAborted = false;
 
     const overlay = document.createElement("div");
@@ -77,7 +66,7 @@ window.runQuestCompleter = function(targetGuildId, inviteCode) {
                 <span style="background: #5865F233; color: #949cf7; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold;">${task.replace(/_/g, ' ')}</span>
             </div>`;
         }).join('')
-        : `<div style="color: #f2f3f43; font-size: 13px; padding: 10px; background: #f23f431a; border-radius: 6px;">සක්‍රීය Quests කිසිවක් හමු නොවීය!</div>`;
+        : `<div style="color: #f23f43; font-size: 13px; padding: 10px; background: #f23f431a; border-radius: 6px;">සක්‍රීය Quests කිසිවක් හමු නොවීය!</div>`;
 
     const box = document.createElement("div");
     box.style.cssText = `
@@ -105,12 +94,13 @@ window.runQuestCompleter = function(targetGuildId, inviteCode) {
             <a href="https://discord.gg/${inviteCode}" target="_blank" id="join-btn" class="qb-btn" style="flex: 1; background: #5865F2; color: white; padding: 10px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px; text-align: center;">1. Join Server</a>
             <button id="verify-btn" class="qb-btn" style="flex: 1; background: #4e5058; color: white; border: none; padding: 10px; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer;">2. Verify Server</button>
         </div>
-        <button id="start-quest-btn" class="qb-btn" style="background: linear-gradient(90deg, #248046, #1a6334); color: white; border: none; padding: 12px; width: 100%; border-radius: 8px; font-weight: 700; font-size: 14px; cursor: pointer; margin-bottom: 14px;">
-            🚀 Start Completing Quests
+        <!-- මුලදී Start Button එක Locked (Disabled) කර ඇත -->
+        <button id="start-quest-btn" class="qb-btn" disabled style="background: #4e5058; color: #b5bac1; border: none; padding: 12px; width: 100%; border-radius: 8px; font-weight: 700; font-size: 14px; cursor: not-allowed; margin-bottom: 14px; opacity: 0.6;">
+            🔒 Start Completing Quests (Verify First)
         </button>
         <div style="background: #1e1f22; border-radius: 8px; padding: 10px;">
             <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px;">
-                <span id="status-msg" style="color: #f0b232; font-weight: 600;">පළමුව Server එකට Join වී Verify කරන්න.</span>
+                <span id="status-msg" style="color: #f0b232; font-weight: 600;">පළමුව Server එකට Join වී Verify ඔබන්න.</span>
                 <span id="modal-percent" style="color: #b5bac1; font-weight: bold;">0%</span>
             </div>
             <div style="width: 100%; height: 8px; background: #2b2d31; border-radius: 4px; overflow: hidden;">
@@ -147,16 +137,50 @@ window.runQuestCompleter = function(targetGuildId, inviteCode) {
     miniWidget.onclick = () => { miniWidget.style.display = "none"; overlay.style.display = "flex"; };
     document.getElementById("kill-modal-btn").onclick = () => { isAborted = true; overlay.remove(); miniWidget.remove(); style.remove(); };
 
+    // Real Server Verification Logic
     document.getElementById("verify-btn").onclick = async () => {
-        document.getElementById("status-msg").innerText = "තහවුරු කිරීම සාර්ථකයි! Start ඔබන්න.";
-        document.getElementById("verify-btn").innerText = "✓ Verified";
-        document.getElementById("verify-btn").style.background = "#248046";
+        const statusMsg = document.getElementById("status-msg");
+        const verifyBtn = document.getElementById("verify-btn");
+        const startBtn = document.getElementById("start-quest-btn");
+
+        statusMsg.innerText = "Server එක පරීක්ෂා කරමින් පවතී...";
+        statusMsg.style.color = "#f0b232";
+        verifyBtn.disabled = true;
+
+        let isInServer = false;
+        try {
+            if (api) {
+                const guildsRes = await api.get({ url: '/users/@me/guilds' });
+                isInServer = guildsRes?.body?.some(g => g.id === targetGuildId) ?? false;
+            }
+        } catch (e) {
+            console.error("Guild check failed:", e);
+        }
+
+        if (isInServer) {
+            statusMsg.innerText = "තහවුරු කිරීම සාර්ථකයි! දැන් Start ඔබන්න.";
+            statusMsg.style.color = "#23a55a";
+            verifyBtn.innerText = "✓ Verified";
+            verifyBtn.style.background = "#248046";
+
+            // Start Button එක Unlock කිරීම
+            if (startBtn) {
+                startBtn.disabled = false;
+                startBtn.style.cursor = "pointer";
+                startBtn.style.opacity = "1";
+                startBtn.style.background = "linear-gradient(90deg, #248046, #1a6334)";
+                startBtn.innerText = "🚀 Start Completing Quests";
+            }
+        } else {
+            statusMsg.innerText = "❌ ඔබ තවමත් අදාළ Server එකට Join වී නැත! පළමුව 1 වන බොත්තම ඔබා Join වන්න.";
+            statusMsg.style.color = "#f23f43";
+            verifyBtn.disabled = false;
+        }
     };
 
     document.getElementById("start-quest-btn").onclick = () => {
         if (quests.length === 0) return;
         
-        const sleep = ms => new RegExp().compile ? new Promise(res => setTimeout(res, ms)) : new Promise(res => setTimeout(res, ms));
         let qList = [...quests];
 
         const runNext = async () => {
